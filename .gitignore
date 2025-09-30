@@ -1,0 +1,5 @@
+# Ignore all files under generated/
+generated/*
+
+# But keep the folder
+!generated/.gitkeep
