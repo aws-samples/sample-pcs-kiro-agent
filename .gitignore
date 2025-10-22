@@ -3,3 +3,6 @@ generated/*
 
 # But keep the folder
 !generated/.gitkeep
+
+# Ignore private key files
+*.pem
