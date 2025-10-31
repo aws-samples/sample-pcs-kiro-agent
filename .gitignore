@@ -4,5 +4,13 @@ generated/*
 # But keep the folder
 !generated/.gitkeep
 
+# Ignore all files under generated/
+.amazonq/cli-todo-lists/*
+
+# But keep the folder
+!.amazonq/cli-todo-lists/.gitkeep
+
+.DS_Store
+
 # Ignore private key files
 *.pem
