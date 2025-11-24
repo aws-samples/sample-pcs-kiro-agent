@@ -1,3 +1,7 @@
+---
+inclusion: manual
+---
+
 # AWS PCS Interactive Agent Rules
 
 ## Core Principles

@@ -1,6 +1,6 @@
 # AWS PCS Cluster Creation Agent
 
-A specialized Amazon Q Developer CLI agent for creating and managing AWS Parallel Computing Service (PCS) clusters with Slurm scheduling, based on [AWS HPC Recipes](https://github.com/aws-samples/aws-hpc-recipes) best practices.
+A specialized Kiro CLI agent for creating and managing AWS Parallel Computing Service (PCS) clusters with Slurm scheduling, based on [AWS HPC Recipes](https://github.com/aws-samples/aws-hpc-recipes) best practices.
 
 ## Overview
 
@@ -13,7 +13,7 @@ This agent helps you create production-ready HPC clusters on AWS with:
 ## Prerequisites
 
 1. **AWS CLI** configured with appropriate permissions
-2. **Amazon Q Developer CLI** with custom agent support
+2. **Kiro CLI** with custom agent support
 3. **AWS Account** with PCS service available in your region
 4. **VPC and Networking** (can be created using provided configurations)
 
@@ -21,12 +21,12 @@ This agent helps you create production-ready HPC clusters on AWS with:
 
 ### 1. Enable Todo Lists (Recommended)
 ```bash
-q settings chat.enableTodoList true
+kiro-cli settings chat.enableTodoList true
 ```
 
 ### 2. Activate the Interactive PCS Agent
 ```bash
-q chat --agent pcs-interactive-agent
+kiro-cli --agent pcs-interactive-specialist
 ```
 Use the interactive agent for step-by-step cluster creation with AWS CLI commands and expert guidance.
 
@@ -37,7 +37,7 @@ I'm new to AWS PCS. Help me create my first cluster with best practices.
 
 ### 4. Cleanup Resources
 ```bash
-q chat --agent pcs-cleanup-agent
+kiro-cli --agent pcs-cleanup-agent
 ```
 Use the cleanup agent to safely delete any PCS cluster and reset the project to default state.
 
@@ -81,11 +81,14 @@ Based on the [AWS PCS Getting Started Tutorial](https://docs.aws.amazon.com/pcs/
 .
 ├── README.md                           # This file
 ├── PCS_CONTEXT.md                      # Detailed PCS knowledge base
-├── .amazonq/
+├── .kiro/
 │   ├── cli-agents/
-│   │   ├── pcs-interactive-agent.json  # Interactive CLI-based agent
+│   │   ├── pcs-interactive-specialist.json  # Interactive CLI-based agent
 │   │   └── pcs-cleanup-agent.json      # Cluster cleanup agent
-│   ├── rules/
+│   ├── steering/
+│   │   ├── product.md                  # Product overview
+│   │   ├── tech.md                     # Technology stack
+│   │   ├── structure.md                # Project structure
 │   │   ├── pcs-rules.md                # CloudFormation template rules
 │   │   └── pcs-interactive-rules.md    # Interactive agent rules
 │   └── cli-todo-lists/                 # Agent todo list storage

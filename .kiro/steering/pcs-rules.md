@@ -1,11 +1,16 @@
-# AWS PCS Agent Rules
+---
+inclusion: fileMatch
+fileMatchPattern: "templates/**/*.yaml"
+---
+
+# AWS PCS CloudFormation Template Rules
 
 ## General Guidelines
 
 - Always generate CloudFormation templates in `./generated/` directory
 - Use timestamp in generated filenames: `pcs-cluster-{timestamp}.yaml`
 - Create deployment README.md alongside each template
-- Use `templates/merged-pcs-cluster.yaml` as the base template
+- Use base template as reference: #[[file:templates/merged-pcs-cluster.yaml]]
 - Copy and modify the merged template based on user requirements
 
 ## Template Approach
@@ -16,7 +21,7 @@
 - Proven working template - copy and modify as needed
 
 ### Customization Process
-1. Copy `templates/merged-pcs-cluster.yaml` to `./generated/pcs-cluster-{timestamp}.yaml`
+1. Copy #[[file:templates/merged-pcs-cluster.yaml]] to `./generated/pcs-cluster-{timestamp}.yaml`
 2. Modify parameters, resources, and configurations based on user requests:
    - **Storage**: Adjust FSx capacity, throughput, or add EFS
    - **Compute**: Change instance types, scaling limits, node groups
