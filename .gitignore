@@ -14,3 +14,7 @@ generated/*
 
 # Ignore private key files
 *.pem
+
+# Ignore backup files
+*.bak
+*.backup
