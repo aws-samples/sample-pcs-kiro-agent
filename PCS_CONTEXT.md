@@ -1,6 +1,6 @@
 # AWS PCS Technical Context and Best Practices
 
-This document provides comprehensive technical knowledge for AWS Parallel Computing Service (PCS) cluster creation and management.
+Technical reference for AWS Parallel Computing Service (PCS) cluster creation and management.
 
 ## Architecture Overview
 
@@ -14,21 +14,22 @@ This document provides comprehensive technical knowledge for AWS Parallel Comput
 
 **Cluster Controller**
 - Manages job scheduling and resource allocation
-- Sizes: SMALL (100 nodes, 1000 jobs), MEDIUM (1000 nodes, 10000 jobs), LARGE (5000 nodes, 50000 jobs)
+- Sizes: SMALL (up to 32 instances, 256 jobs), MEDIUM (up to 512 instances, 8,192 jobs), LARGE (up to 2,048 instances, 16,384 jobs)
 - Cannot be changed after cluster creation
 - Automatically handles failover and scaling
+- For requirements beyond LARGE, contact AWS
 
 **Compute Node Groups**
 - Collections of EC2 instances for job execution
 - Auto-scaling based on job queue demand
-- Support multiple instance types within same group
+- Support multiple instance types within same group (must share processor architecture and vCPU count; GPU types must share GPU count)
 - Can be dynamically added/removed from cluster
 
 **Queues**
 - Slurm partitions for organizing workloads
-- Define access policies and resource limits
-- Can target specific compute node groups
-- Support priority-based scheduling
+- Associate one or more compute node groups with each queue
+- Users submit jobs to queues, not directly to compute nodes
+- Support priority-based scheduling via Slurm custom settings
 
 ## Networking Requirements
 
@@ -48,36 +49,36 @@ This document provides comprehensive technical knowledge for AWS Parallel Comput
 
 ### Security Groups
 
-**Minimum Required Rules**
+AWS PCS creates network interfaces in your VPC for the cluster's scheduler endpoints. The PCS controller itself runs in an AWS-managed account — you do not create or manage a separate controller security group. You configure security groups for the cluster's elastic network interfaces and for your compute node groups.
 
-*Controller Security Group*
+**Cluster Security Group (applied to PCS-managed ENIs in your VPC)**
 ```
 Inbound:
-- Port 6817-6818 (TCP) from compute node security groups - Slurm communication
-- Port 22 (TCP) from admin security groups - SSH access (optional)
+- Port 6817-6819 (TCP) from compute node security groups - Slurm communication (6819 needed if accounting enabled)
 
 Outbound:
-- All traffic to 0.0.0.0/0 - Internet access for package installation
+- All traffic to compute node security groups - Slurm communication
 ```
 
-*Compute Node Security Group*
+**Compute Node Security Group**
 ```
 Inbound:
-- Port 6818 (TCP) from controller security group - Slurm daemon
+- Port 6818 (TCP) from cluster security group - Slurm daemon
 - Port 22 (TCP) from login node security groups - SSH access
 - All traffic from same security group - Inter-node communication
 
 Outbound:
+- Port 6817-6819 (TCP) to cluster security group - Slurm controller and accounting communication
 - All traffic to 0.0.0.0/0 - Internet access for packages and data
 ```
 
-*Login Node Security Group*
+**Login Node Security Group**
 ```
 Inbound:
 - Port 22 (TCP) from user access ranges - SSH login
-- Port 6817 (TCP) from controller security group - Slurm client
 
 Outbound:
+- Port 6817-6819 (TCP) to cluster security group - Slurm client to controller and accounting
 - All traffic to 0.0.0.0/0 - General internet access
 ```
 
@@ -89,7 +90,7 @@ Outbound:
 - POSIX-compliant NFS file system
 - Automatic scaling and high availability
 - Performance modes: General Purpose, Max I/O
-- Throughput modes: Provisioned, Bursting
+- Throughput modes: Elastic (default, recommended for spiky workloads), Provisioned, Bursting
 - Encryption at rest and in transit
 - Cross-AZ replication available
 
@@ -106,6 +107,13 @@ Outbound:
 - Encryption and snapshot capabilities
 - Not shared between nodes
 
+**Additional Supported Storage**
+- Amazon FSx for NetApp ONTAP
+- Amazon FSx for OpenZFS
+- Amazon S3 (via Mountpoint for Amazon S3)
+- Amazon File Cache
+- Self-managed storage resources
+
 ### Storage Best Practices
 
 **Mount Point Standards**
@@ -116,7 +124,7 @@ Outbound:
 
 **Performance Considerations**
 - Use EFS for shared, moderate-performance needs
-- Use FSx for high-performance, parallel workloads
+- Use FSx for Lustre for high-performance, parallel workloads
 - Use local NVMe for temporary, high-IOPS requirements
 - Consider data locality for large datasets
 
@@ -125,151 +133,144 @@ Outbound:
 ### Instance Type Selection
 
 **CPU-Optimized Families**
-- `c5/c5n/c6i/c7i` - Balanced compute performance
-- `m5/m6i/m7i` - General purpose with memory balance
-- `r5/r6i/r7i` - Memory-optimized for large datasets
-- `x1e/x2iezn` - High memory for in-memory computing
+- `c7i/c7i-flex` - Balanced compute performance
+- `m7i/m7i-flex` - General purpose with memory balance
+- `r7i/r7iz` - Memory-optimized for large datasets
+- `hpc7a/hpc7g` - HPC-optimized with EFA
 
 **GPU-Enabled Families**
-- `p3/p4/p5` - ML training and HPC simulations
-- `g4/g5` - Graphics workstations and visualization
-- Consider GPU memory requirements vs cost
+- `p4d/p5/p5en/p6-b200/p6-b300` - ML training and HPC simulations
+- `g6/g6e` - Graphics workstations and visualization
+- `trn1/trn2` - AWS Trainium for ML training
+- `inf2` - AWS Inferentia for ML inference
 
 **Storage-Optimized**
-- `i3/i4i` - NVMe SSD for high random I/O
-- `d2/d3` - Dense HDD storage for analytics
+- `i4i` - NVMe SSD for high random I/O
+- `d3/d3en` - Dense HDD storage for analytics
 
 ### Scaling Configuration
 
 **Auto Scaling Parameters**
-- Scale-down idle time: 2-10 minutes typical
-- Min capacity: 0 for cost optimization
+- Min capacity: 0 for cost optimization (dynamic scaling)
 - Max capacity: Based on budget and workload peaks
-- Desired capacity: Typically 0 (demand-driven)
+- Static configuration: set min and max to the same non-zero value
+- Dynamic configuration: set min to 0, max to desired ceiling
+- PCS does not support mixed static and dynamic instances in the same node group
+- Scale-down idle time is a cluster-level setting (`scaleDownIdleTimeInSeconds` on the cluster's `slurmConfiguration`), not a node group setting
+
+**Purchase Options**
+- On-Demand Instances
+- Spot Instances (requires AWSServiceRoleForEC2Spot service-linked role)
+- Capacity Block (EC2 Capacity Blocks for ML — P and TRN families)
+- On-Demand Capacity Reservations (ODCRs)
 
 **Launch Template Requirements**
-- Must specify AMI compatible with PCS
-- Instance profile with required IAM permissions
-- User data script for cluster joining
+- Must specify a PCS-compatible AMI. A compatible AMI requires two PCS-provided installers to be run: the PCS agent installer and the Slurm installer. AWS provides sample AMIs with these pre-installed, or you can build your own custom AMI by running both installers on a base image.
+- Instance profile with required IAM permissions (must include `RegisterComputeNodeGroupInstance` API permission)
 - Security group assignments
 - Storage configuration
+- Subnet configuration
 
 ## Queue Management
 
-### Queue Configuration Patterns
+### Queue Configuration
 
-**Interactive Queue**
-```yaml
-- name: interactive
-  computeNodeGroupConfigurations:
-    - computeNodeGroupId: login-nodes
-  priority: 100
-  description: "Interactive development and debugging"
+Queues in AWS PCS associate one or more compute node groups with a named partition. The PCS CreateQueue API accepts a queue name, cluster identifier, and compute node group configurations. Priority and description are Slurm partition-level settings configured through Slurm custom settings, not PCS API fields.
+
+**Creating a queue (CLI)**
+```bash
+aws pcs create-queue \
+  --region us-east-1 \
+  --cluster-identifier my-cluster \
+  --queue-name batch \
+  --compute-node-group-configurations computeNodeGroupId=cng-ExampleId1
 ```
 
-**Batch Queue**
-```yaml
-- name: batch
-  computeNodeGroupConfigurations:
-    - computeNodeGroupId: compute-nodes
-  priority: 50
-  description: "Production batch workloads"
-```
-
-**GPU Queue**
-```yaml
-- name: gpu
-  computeNodeGroupConfigurations:
-    - computeNodeGroupId: gpu-nodes
-  priority: 75
-  description: "GPU-accelerated computing"
-```
+**Adding Slurm-level settings (priority, etc.)**
+Use Slurm custom settings on the queue or compute node group to configure partition-level parameters like Priority, MaxTime, and other scheduling policies. PCS exposes the most popular `slurm.conf` settings, and as of March 2026 also supports `slurmdbd.conf` and cgroup settings — allowing you to configure accounting behavior, data retention, privacy controls, CPU/memory resource isolation, and device access directly through the PCS console, CLI, or SDK.
 
 ### Resource Limits
 
-**Per-User Limits**
+Resource limits in PCS are configured through Slurm's native mechanisms, not through PCS API fields. Use Slurm accounting (sacctmgr) or Slurm custom settings to configure:
+
+**Per-User Limits (via sacctmgr or slurm.conf)**
 - MaxJobs: Maximum concurrent jobs per user
 - MaxSubmitJobs: Maximum jobs in queue per user
 - MaxWall: Maximum job runtime
-- MaxCPUs: Maximum CPU cores per user
 
-**Per-Job Limits**
-- DefCpuPerTask: Default CPUs per task
-- MaxCpuPerNode: Maximum CPUs per node
-- MaxMemPerCpu: Maximum memory per CPU
-- MaxTime: Maximum job runtime
+**Per-Partition Limits (via Slurm custom settings)**
+- MaxTime: Maximum job runtime for the partition
+- MaxNodes: Maximum nodes per job
+- Priority: Partition priority
 
 ## Cluster Sizing Guidelines
 
 ### Development/Testing
-- **Size**: SMALL
+- **Size**: SMALL (up to 32 instances, 256 jobs)
 - **Nodes**: 1-10 compute nodes
-- **Instance Types**: t3.medium, c5.large
+- **Instance Types**: t3.medium or c7i.large for debugging and script validation
 - **Storage**: 100GB EFS General Purpose
-- **Use Case**: Code development, small simulations
+- **Use Case**: Code development, job script testing, small validation runs
 
 ### Production/Research
-- **Size**: MEDIUM
+- **Size**: MEDIUM (up to 512 instances, 8,192 jobs)
 - **Nodes**: 10-100 compute nodes
-- **Instance Types**: c5.xlarge, r5.xlarge
-- **Storage**: 1TB+ EFS, FSx for high-performance
+- **Instance Types**: c7i.xlarge, hpc7a, r7i.xlarge, p5 (GPU)
+- **Storage**: 1TB+ EFS, FSx for Lustre for high-performance
 - **Use Case**: Production workloads, research simulations
 
 ### Large Scale/Commercial
-- **Size**: LARGE
+- **Size**: LARGE (up to 2,048 instances, 16,384 jobs)
 - **Nodes**: 100+ compute nodes
-- **Instance Types**: c5n.18xlarge, p4d.24xlarge
-- **Storage**: Multi-TB FSx, tiered storage
+- **Instance Types**: hpc7a.96xlarge, c7i.48xlarge, p5.48xlarge, p5en (GPU)
+- **Storage**: Multi-TB FSx for Lustre, tiered storage
 - **Use Case**: Commercial HPC, AI/ML training
 
 ## Cost Optimization
 
 ### Instance Strategy
-- Use Spot instances for fault-tolerant workloads
+- Use Spot Instances for fault-tolerant workloads (up to 90% savings)
 - Mix On-Demand and Spot for availability
 - Right-size instances based on workload profiling
-- Consider Reserved Instances for steady-state capacity
+- Consider Savings Plans or Reserved Instances for steady-state capacity
 
 ### Storage Optimization
 - EFS Infrequent Access for archive data
-- FSx periodic file system for temporary data
+- FSx scratch file systems for temporary data
 - S3 integration for long-term data storage
 - Lifecycle policies for automated tiering
 
 ### Operational Efficiency
-- Implement cluster hibernation for development
+- Set compute node group min to 0 so nodes scale down when idle (node management fees stop; controller fee continues while cluster exists)
 - Use CloudWatch metrics for utilization monitoring
 - Set up billing alerts and cost tracking
-- Regular cleanup of unused resources
+- Delete unused clusters to stop controller fees
+
+### PCS Service Fees
+- Hourly cluster controller fee (varies by controller size: Small/Medium/Large)
+- Hourly per-instance node management fee: standard tier for most EC2 types, advanced tier for P and TRN families
+- Optional: Slurm accounting usage fee + accounting storage fee
+- All PCS fees are in addition to underlying EC2, storage, and networking costs
 
 ## IAM Roles and Permissions
 
-### PCS Service Role
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "pcs.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-```
+### PCS Service-Linked Role
+AWS PCS uses a service-linked role for managing resources in your account. This is created automatically.
 
 ### Compute Node Instance Profile
-**Required Policies**:
-- `AmazonSSMManagedInstanceCore` - Systems Manager
-- `CloudWatchAgentServerPolicy` - Monitoring
-- Custom policy for EFS/FSx access
+**Required Permissions**:
+- Permission to call `pcs:RegisterComputeNodeGroupInstance`
+- `AmazonSSMManagedInstanceCore` - Systems Manager access
+- `CloudWatchAgentServerPolicy` - Monitoring (optional)
+- Custom policy for EFS/FSx access as needed
+
+AWS PCS can create a basic instance profile for you during compute node group creation in the console.
 
 ### User Access Policies
-- `PCSFullAccess` - Complete cluster management
-- `PCSReadOnlyAccess` - View cluster status
-- Custom policies for specific operations
+There are no AWS-published managed policies named `PCSFullAccess` or `PCSReadOnlyAccess`. Create custom IAM policies scoped to the `pcs:*` actions your users need. Example actions:
+- `pcs:CreateCluster`, `pcs:DeleteCluster`, `pcs:GetCluster`, `pcs:ListClusters`
+- `pcs:CreateComputeNodeGroup`, `pcs:UpdateComputeNodeGroup`
+- `pcs:CreateQueue`, `pcs:UpdateQueue`
 
 ## Slurm Configuration
 
@@ -279,10 +280,16 @@ Outbound:
 - `CR_CPU` - CPU-only scheduling
 - `CR_CPU_Memory` - Memory-aware scheduling (recommended)
 
+Configure via Slurm custom settings when creating or updating a cluster.
+
 **Accounting Configuration**
-- Enable for job tracking and billing
-- Requires external database (RDS recommended)
-- Configure with cluster creation
+- PCS manages the accounting database natively — no external RDS needed
+- Enable via `slurmConfiguration.accounting` with `mode=STANDARD`
+- Set `defaultPurgeTimeInDays` for record retention (-1 for indefinite, valid range: -1 to 10000, 0 is invalid)
+- Requires Slurm version 24.11 or later
+- Accounting uses port 6819 (slurmdbd) — ensure security groups allow TCP 6819 between the cluster ENIs and compute nodes
+- Enabling accounting incurs additional PCS billing charges (accounting usage fee + storage fee)
+- As of March 2026, PCS also supports `slurmdbd.conf` custom settings for fine-tuning accounting behavior (privacy controls, data retention, workload tracking)
 
 **Prolog/Epilog Scripts**
 - Must be directories, not files
@@ -322,41 +329,41 @@ srun ./gpu-application
 - Cluster health and job queue status
 - Compute node utilization and scaling events
 - Storage performance and capacity metrics
-- Cost and billing information
+- PCS delivers metrics and application logs to CloudWatch
+- Auditable events emitted to CloudTrail
 
 ### Common Issues
 
 **Compute Nodes Not Starting**
-- Check security group rules
-- Verify IAM permissions
+- Check security group rules (ensure Slurm ports 6817-6819 are open between cluster and nodes; 6819 needed for accounting)
+- Verify IAM instance profile permissions (RegisterComputeNodeGroupInstance)
 - Review launch template configuration
-- Check subnet capacity and limits
+- Check subnet capacity and service quotas
 
 **Jobs Stuck in Queue**
 - Verify resource requests vs availability
-- Check queue configuration and limits
+- Check queue configuration and compute node group associations
 - Review node state and availability
 - Examine Slurm logs for errors
 
 **Storage Access Issues**
-- Verify EFS/FSx mount targets
-- Check security group rules for NFS
+- Verify EFS/FSx mount targets in correct subnets
+- Check security group rules for NFS (port 2049)
 - Review IAM permissions for storage access
-- Test network connectivity to storage
+- Test network connectivity to storage endpoints
 
 ### Log Locations
 - Slurm logs: `/var/log/slurm/`
 - System logs: `/var/log/messages`
 - CloudWatch Logs for centralized logging
-- AWS PCS service logs via API
+- AWS CloudTrail for API activity
 
 ## Integration Patterns
 
-### CI/CD Integration
-- Infrastructure as Code with CloudFormation
-- Automated testing with parallel job execution
-- Container-based workloads with Docker/Singularity
-- Integration with CodePipeline and CodeBuild
+### Infrastructure as Code
+- AWS CloudFormation support for PCS clusters and associated infrastructure
+- Terraform via AWS provider
+- EC2 Image Builder for AMI build automation
 
 ### Data Pipeline Integration
 - S3 data lakes for input/output
@@ -367,63 +374,94 @@ srun ./gpu-application
 ### ML/AI Workflows
 - SageMaker integration for model training
 - Jupyter notebooks for interactive development
-- Model serving with ECS/EKS
-- MLOps pipelines with automated retraining
+- Container-based workloads with Docker/Singularity
+
+### Directory Services
+- LDAP-based user authentication and authorization
+- Microsoft Active Directory, Microsoft Entra ID, OpenLDAP
 
 ## CLI Command Reference
 
 ### Cluster Management
 ```bash
-# Create cluster
-aws pcs create-cluster --cluster-name my-cluster \
-  --scheduler type=SLURM,version=24.11 \
+# Create cluster (Slurm 25.05 is current; 24.11 also supported)
+aws pcs create-cluster \
+  --region us-east-1 \
+  --cluster-name my-cluster \
+  --scheduler '{"type":"SLURM","version":"25.05"}' \
   --size SMALL \
-  --networking subnetIds=subnet-12345,securityGroupIds=sg-12345
+  --networking '{"subnetIds":["subnet-ExampleId1"],"securityGroupIds":["sg-ExampleId1"]}'
+
+# Create cluster with accounting and custom Slurm settings
+aws pcs create-cluster \
+  --region us-east-1 \
+  --cluster-name my-cluster \
+  --scheduler '{"type":"SLURM","version":"25.05"}' \
+  --size MEDIUM \
+  --networking '{"subnetIds":["subnet-ExampleId1"],"securityGroupIds":["sg-ExampleId1"]}' \
+  --slurm-configuration '{"scaleDownIdleTimeInSeconds":3600,"accounting":{"mode":"STANDARD"},"slurmCustomSettings":[{"parameterName":"SelectTypeParameters","parameterValue":"CR_CPU_Memory"}]}'
 
 # List clusters
-aws pcs list-clusters
+aws pcs list-clusters --region us-east-1
 
-# Describe cluster
-aws pcs get-cluster --cluster-name my-cluster
+# Describe cluster (use --cluster-identifier, accepts name or ID)
+aws pcs get-cluster --region us-east-1 --cluster-identifier my-cluster
 
-# Delete cluster
-aws pcs delete-cluster --cluster-name my-cluster
+# Delete cluster (all queues and compute node groups must be deleted first)
+aws pcs delete-cluster --region us-east-1 --cluster-identifier my-cluster
 ```
 
 ### Compute Node Groups
 ```bash
-# Create compute node group
+# Create compute node group (required params: --cluster-identifier, --compute-node-group-name,
+# --subnet-ids, --instance-configs, --custom-launch-template, --iam-instance-profile-arn,
+# --scaling-configuration. --ami-id is optional if launch template specifies an AMI)
 aws pcs create-compute-node-group \
-  --cluster-name my-cluster \
+  --region us-east-1 \
+  --cluster-identifier my-cluster \
   --compute-node-group-name batch-nodes \
-  --scaling-policy type=BEST_FIT_PROGRESSIVE,minInstanceCount=0,maxInstanceCount=10
+  --ami-id ami-ExampleId1 \
+  --subnet-ids subnet-ExampleId1 \
+  --instance-configs '[{"instanceType":"c7i.xlarge"}]' \
+  --custom-launch-template id=lt-ExampleId1,version=1 \
+  --iam-instance-profile-arn arn:aws:iam::123456789012:instance-profile/my-pcs-profile \
+  --scaling-configuration minInstanceCount=0,maxInstanceCount=10
 
 # List compute node groups
-aws pcs list-compute-node-groups --cluster-name my-cluster
+aws pcs list-compute-node-groups --region us-east-1 --cluster-identifier my-cluster
 
-# Update scaling
+# Update scaling configuration
 aws pcs update-compute-node-group \
-  --cluster-name my-cluster \
-  --compute-node-group-name batch-nodes \
-  --scaling-policy maxInstanceCount=20
+  --region us-east-1 \
+  --cluster-identifier my-cluster \
+  --compute-node-group-identifier batch-nodes \
+  --scaling-configuration maxInstanceCount=20
 ```
 
 ### Queue Management
 ```bash
 # Create queue
 aws pcs create-queue \
-  --cluster-name my-cluster \
+  --region us-east-1 \
+  --cluster-identifier my-cluster \
   --queue-name batch \
-  --compute-node-group-configurations computeNodeGroupId=batch-nodes
+  --compute-node-group-configurations computeNodeGroupId=cng-ExampleId1
 
 # List queues
-aws pcs list-queues --cluster-name my-cluster
+aws pcs list-queues --region us-east-1 --cluster-identifier my-cluster
 
 # Update queue
 aws pcs update-queue \
-  --cluster-name my-cluster \
-  --queue-name batch \
-  --compute-node-group-configurations computeNodeGroupId=batch-nodes,priority=100
+  --region us-east-1 \
+  --cluster-identifier my-cluster \
+  --queue-identifier batch \
+  --compute-node-group-configurations computeNodeGroupId=cng-ExampleId1
 ```
 
-This technical context provides the foundation for creating robust, scalable, and cost-effective AWS PCS clusters following AWS best practices.
+## Supported Slurm Versions
+
+AWS PCS currently supports Slurm 25.05 and 24.11. Slurm 24.05 has reached end of support. AWS PCS supports up to three major Slurm versions at a time. Once a version reaches end of life, no new clusters can be created with it, but existing clusters continue running for up to 12 months.
+
+## Region Availability
+
+AWS PCS is available in: US East (N. Virginia, Ohio), US West (Oregon), Asia Pacific (Mumbai, Singapore, Sydney, Tokyo), Europe (Frankfurt, Ireland, London, Paris, Stockholm), and AWS GovCloud (US-East, US-West). Region availability is expanding — check the [AWS Regional Services List](https://aws.amazon.com/about-aws/global-infrastructure/regional-product-services/) for the latest.
