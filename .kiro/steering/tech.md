@@ -25,7 +25,7 @@ inclusion: always
 - **Markdown**: Documentation and steering files
 
 ### HPC Stack
-- **Slurm**: Workload manager and job scheduler (version 24.11)
+- **Slurm**: Workload manager and job scheduler (version 25.05)
 - **OpenMPI**: Message Passing Interface for parallel computing
 - **Intel MPI**: Alternative MPI implementation
 - **GNU Compiler Collection**: C/C++/Fortran compilers
@@ -70,7 +70,7 @@ inclusion: always
 - Templates in `templates/` directory
 - Generated files in `generated/` directory
 - Documentation in root and `.kiro/steering/`
-- Agent configurations in `.kiro/cli-agents/`
+- Agent configurations in `.kiro/agents/`
 
 ### Naming Conventions
 - **Resources**: kebab-case with descriptive prefixes (pcs-demo-vpc)

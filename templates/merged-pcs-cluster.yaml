@@ -49,9 +49,9 @@ Parameters:
   # PCS Parameters
   SlurmVersion:
     Type: String
-    Default: '24.11'
+    Default: '25.05'
     Description: Version of Slurm to use
-    AllowedValues: ['24.05', '24.11']
+    AllowedValues: ['24.11', '25.05']
   KeyName:
     Description: SSH keypair to connect to the login node
     Type: AWS::EC2::KeyPair::KeyName
@@ -421,7 +421,17 @@ Resources:
             
             runcmd:
             # If provided, mount FSxL filesystem as /shared
-            - if [ ! -z "${FSxLustreFileSystem}" ]; then amazon-linux-extras install -y lustre=latest; mkdir -p /shared; chmod a+rwx /shared; mount -t lustre ${FSxLustreFileSystem}.fsx.${AWS::Region}.amazonaws.com@tcp:/${FSxLustreFileSystem} /shared; chmod 777 /shared; fi
+            - |
+              if [ ! -z "${FSxLustreFileSystem}" ]; then
+                if command -v amazon-linux-extras &>/dev/null; then
+                  amazon-linux-extras install -y lustre=latest
+                else
+                  dnf install -y lustre-client
+                fi
+                mkdir -p /shared
+                mount -t lustre ${FSxLustreFileSystem}.fsx.${AWS::Region}.amazonaws.com@tcp:/${FSxLustreFileSystem} /shared
+                chmod 777 /shared
+              fi
 
             --==MYBOUNDARY==
 
@@ -453,7 +463,17 @@ Resources:
             
             runcmd:
             # If provided, mount FSxL filesystem as /shared
-            - if [ ! -z "${FSxLustreFileSystem}" ]; then amazon-linux-extras install -y lustre=latest; mkdir -p /shared; chmod a+rwx /shared; mount -t lustre ${FSxLustreFileSystem}.fsx.${AWS::Region}.amazonaws.com@tcp:/${FSxLustreFileSystem} /shared; fi
+            - |
+              if [ ! -z "${FSxLustreFileSystem}" ]; then
+                if command -v amazon-linux-extras &>/dev/null; then
+                  amazon-linux-extras install -y lustre=latest
+                else
+                  dnf install -y lustre-client
+                fi
+                mkdir -p /shared
+                mount -t lustre ${FSxLustreFileSystem}.fsx.${AWS::Region}.amazonaws.com@tcp:/${FSxLustreFileSystem} /shared
+                chmod 777 /shared
+              fi
 
             --==MYBOUNDARY==
 

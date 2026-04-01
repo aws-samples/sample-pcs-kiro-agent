@@ -17,7 +17,7 @@ inclusion: always
 │   │   ├── structure.md                # This file (always included)
 │   │   ├── pcs-rules.md                # CloudFormation template rules
 │   │   └── pcs-interactive-rules.md    # Interactive agent rules
-│   ├── cli-agents/                     # Kiro CLI agent configurations
+│   ├── agents/                         # Kiro CLI agent configurations
 │   │   ├── pcs-interactive-specialist.json  # Interactive CLI-based agent
 │   │   └── pcs-cleanup-agent.json      # Cluster cleanup agent
 │   └── cli-todo-lists/                 # Agent todo list storage
@@ -49,7 +49,7 @@ Use Kiro's file reference syntax for live workspace files:
 - Template reference: #[[file:templates/merged-pcs-cluster.yaml]]
 - Project overview: #[[file:README.md]]
 - Context documentation: #[[file:PCS_CONTEXT.md]]
-- Agent configurations: #[[file:.kiro/cli-agents/pcs-interactive-specialist.json]]
+- Agent configurations: #[[file:.kiro/agents/pcs-interactive-specialist.json]]
 
 ### CloudFormation References
 - **Parameters**: Use descriptive names with type hints

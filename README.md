@@ -47,7 +47,7 @@ Based on the [AWS PCS Getting Started Tutorial](https://docs.aws.amazon.com/pcs/
 
 ### **Cluster Configuration**
 - **Name**: `get-started`
-- **Scheduler**: Slurm Version 24.11
+- **Scheduler**: Slurm Version 25.05
 - **Controller Size**: Small
 - **Networking**: IPv4 with VPC and private subnets
 
@@ -82,7 +82,7 @@ Based on the [AWS PCS Getting Started Tutorial](https://docs.aws.amazon.com/pcs/
 ├── README.md                           # This file
 ├── PCS_CONTEXT.md                      # Detailed PCS knowledge base
 ├── .kiro/
-│   ├── cli-agents/
+│   ├── agents/
 │   │   ├── pcs-interactive-specialist.json  # Interactive CLI-based agent
 │   │   └── pcs-cleanup-agent.json      # Cluster cleanup agent
 │   ├── steering/
